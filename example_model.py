@@ -41,7 +41,8 @@ with open("v4/features.json", "r") as f:
     feature_metadata = json.load(f)
 # features = list(feature_metadata["feature_stats"].keys()) # get all the features
 # features = feature_metadata["feature_sets"]["small"] # get the small feature set
-features = feature_metadata["feature_sets"]["medium"] # get the medium feature set
+# get the medium feature set
+features = feature_metadata["feature_sets"]["medium"]
 # read in just those features along with era and target columns
 read_columns = features + [ERA_COL, DATA_TYPE_COL, TARGET_COL]
 
@@ -52,7 +53,7 @@ training_data = pd.read_parquet('v4/train.parquet',
 validation_data = pd.read_parquet('v4/validation.parquet',
                                   columns=read_columns)
 live_data = pd.read_parquet(f'v4/live_{current_round}.parquet',
-                                  columns=read_columns)
+                            columns=read_columns)
 
 
 # pare down the number of eras to every 4th era
@@ -76,11 +77,11 @@ print(f"Checking for existing model '{model_name}'")
 model = load_model(model_name)
 if not model:
     print(f"model not found, creating new one")
-    params = {"n_estimators": 2000,
-              "learning_rate": 0.01,
-              "max_depth": 5,
-              "num_leaves": 2 ** 5,
-              "colsample_bytree": 0.1}
+    params = {"n_estimators": 200,
+              "learning_rate": 0.1,
+              "max_depth": 10,
+              "num_leaves": 2 ** 3,
+              "colsample_bytree": 0.5}
 
     model = LGBMRegressor(**params)
 
@@ -92,12 +93,14 @@ if not model:
 
 gc.collect()
 
-nans_per_col = live_data[live_data["data_type"] == "live"][features].isna().sum()
+nans_per_col = live_data[live_data["data_type"]
+                         == "live"][features].isna().sum()
 
 # check for nans and fill nans
 if nans_per_col.any():
     total_rows = len(live_data[live_data["data_type"] == "live"])
-    print(f"Number of nans per column this week: {nans_per_col[nans_per_col > 0]}")
+    print(
+        f"Number of nans per column this week: {nans_per_col[nans_per_col > 0]}")
     print(f"out of {total_rows} total rows")
     print(f"filling nans with 0.5")
     live_data.loc[:, features] = live_data.loc[:, features].fillna(0.5)
@@ -110,7 +113,8 @@ else:
 # pipeline from failing if Numerai adds more data and we don't have time to retrain!
 model_expected_features = model.booster_.feature_name()
 if set(model_expected_features) != set(features):
-    print(f"New features are available! Might want to retrain model {model_name}.")
+    print(
+        f"New features are available! Might want to retrain model {model_name}.")
 validation_data.loc[:, f"preds_{model_name}"] = model.predict(
     validation_data.loc[:, model_expected_features])
 live_data.loc[:, f"preds_{model_name}"] = model.predict(
@@ -142,7 +146,8 @@ model_to_submit = f"preds_{model_name}_neutral_riskiest_50"
 # rename best model to "prediction" and rank from 0 to 1 to meet upload requirements
 validation_data["prediction"] = validation_data[model_to_submit].rank(pct=True)
 live_data["prediction"] = live_data[model_to_submit].rank(pct=True)
-validation_data["prediction"].to_csv(f"validation_predictions_{current_round}.csv")
+validation_data["prediction"].to_csv(
+    f"validation_predictions_{current_round}.csv")
 live_data["prediction"].to_csv(f"live_predictions_{current_round}.csv")
 
 validation_preds = pd.read_parquet('v4/validation_example_preds.parquet')
@@ -150,7 +155,9 @@ validation_data[EXAMPLE_PREDS_COL] = validation_preds["prediction"]
 
 # get some stats about each of our models to compare...
 # fast_mode=True so that we skip some of the stats that are slower to calculate
-validation_stats = validation_metrics(validation_data, [model_to_submit, f"preds_{model_name}"], example_col=EXAMPLE_PREDS_COL, fast_mode=True, target_col=TARGET_COL)
+validation_stats = validation_metrics(validation_data, [
+                                      model_to_submit, f"preds_{model_name}"], example_col=EXAMPLE_PREDS_COL, fast_mode=True, target_col=TARGET_COL)
+print(validation_stats)
 print(validation_stats[["mean", "sharpe"]].to_markdown())
 
 print(f'''
